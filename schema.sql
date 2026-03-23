@@ -20,4 +20,13 @@ CREATE TABLE reviews(
     rating INT
 );
 
-    
+SELECT * FROM users; -- 조회
+
+-- DROP : 삭제
+DROP TABLE users(
+    id VARCHAR(50),
+    email VARCHAR(200),
+    password VARCHAR(200),
+)
+
+-- 제약조건(CONSTRAINT) : 데이터 무결성을 지키기 위한 규칙
