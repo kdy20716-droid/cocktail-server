@@ -12,6 +12,16 @@ const pool = mysql.createPool({
 
 const app = express();
 
+app.use((req, res, next) => {
+  // CORS 허용
+  res.header("Access-Control-Allow-Origin", "http://localhost:5173");
+  // GET(조회), POST(추가), PUT(수정), DELETE(삭제) 요청 허용
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE");
+  // JSON 데이터를 받을수있도록 허용
+  res.header("Access-Control-Allow-Headers", "Content-Type");
+  next();
+});
+
 // JSON 형태로 들어오는 요청을 파싱해서 req.body에 추가
 app.use(express.json());
 
@@ -39,8 +49,13 @@ app.post("/recipes", async (req, res) => {
 
 // DB에 있는 칵테일 레시피들 조회 : get
 app.get("/recipes", async (req, res) => {
-  const [result] = await pool.query("SELECT * FROM recipes");
-  res.status(200).json(result);
+  try {
+    const [result] = await pool.query("SELECT * FROM recipes");
+    res.status(200).json(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "서버 에러" });
+  }
 });
 
 app.listen(4000, () => {
