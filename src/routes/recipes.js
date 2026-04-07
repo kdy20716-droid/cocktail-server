@@ -8,7 +8,7 @@ const router = express.Router(); // Router 객체 생성
 // DB에 값을 추가(post)
 //INSERT INTO recipes(user_id, name, image, description)
 //VALUES(1, '모히또', '모히또.jpg', '상큼하고 청량한 쿠바식 칵테일');
-router.post("/recipes", async (req, res) => {
+router.post("/", async (req, res) => {
   try {
     const { name, image, description } = req.body;
     await pool.query(
@@ -27,7 +27,7 @@ router.post("/recipes", async (req, res) => {
 // router.get("/")
 // -> app.js에서 app.use("/recipes", recipesRouter)로 연결되었기 때문에
 // 실제 주소는 GET /recipes
-router.get("/recipes", async (req, res) => {
+router.get("/", async (req, res) => {
   try {
     const [result] = await pool.query("SELECT * FROM recipes ORDER BY id DESC");
     res.status(200).json(result);

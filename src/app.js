@@ -19,7 +19,8 @@ app.use((req, res, next) => {
 // JSON 형태로 들어오는 요청을 파싱해서 req.body에 추가
 app.use(express.json());
 
-app.use("/", recipesRouter);
+// '/recipes' 경로로 들어오는 요청을 recipesRouter로 연결
+app.use("/recipes", recipesRouter);
 
 app.listen(4000, () => {
   console.log("4000번 포트번호로 서버 실행중");
