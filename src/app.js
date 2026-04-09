@@ -3,6 +3,7 @@ import express from "express"; // ES 문법 (자바스크립트 최신문법)
 
 // recipes 라우터 파일을 가져온다
 import recipesRouter from "./routes/recipes.js";
+import usersRouter from "./routes/users.js";
 
 const app = express();
 
@@ -21,6 +22,7 @@ app.use(express.json());
 
 // '/recipes' 경로로 들어오는 요청을 recipesRouter로 연결
 app.use("/recipes", recipesRouter);
+app.use("/users", usersRouter);
 
 app.listen(4000, () => {
   console.log("4000번 포트번호로 서버 실행중");
