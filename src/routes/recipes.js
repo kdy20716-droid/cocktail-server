@@ -1,60 +1,34 @@
 import express from "express";
 // DB와 연결된 pool을 db.js 파일에서 가져온다
 import pool from "../db.js";
+import authMiddleware from "../middleware/auth.js";
+import fs from "fs";
+import upload from "../middleware/upload.js"; // 따로 분리해둔 upload.js 설정을 불러옵니다.
 
 const router = express.Router(); // Router 객체 생성
 // router는 app처럼 get, post, put, delete 사용 가능
 
+// uploads 폴더가 없으면 자동 생성
+if (!fs.existsSync("uploads")) {
+  fs.mkdirSync("uploads");
+}
+
 // DB에 값을 추가(post)
-//INSERT INTO recipes(user_id, name, image, description)
-//VALUES(1, '모히또', '모히또.jpg', '상큼하고 청량한 쿠바식 칵테일');
-router.post("/", async (req, res) => {
+router.post("/", authMiddleware, upload.single("image"), async (req, res) => {
   try {
-    // 1. req.body에서 user_id도 함께 꺼내옵니다.
-    const { user_id, name, image, description, ingredients, directions } =
-      req.body;
+    const { user_id, name, description, ingredients, directions } = req.body;
+    const userId = req.userId; // authMiddleware에서 req 객체에 userId를 저장했으므로 여기서 꺼내올 수 있습니다.
 
-    // 레시피 정보 저장
-    const [result] = await pool.query(
-      "INSERT INTO recipes(user_id, name, image, description) VALUES(?, ?, ?, ?)",
-      [user_id, name, image, description],
+    // 업로드된 파일이 있으면 이미지 접근 주소를 만들고, 없으면 null
+    const image = req.file
+      ? `http://localhost:4000/uploads/${req.file.filename}`
+      : null;
+
+    await pool.query(
+      "INSERT INTO recipes(user_id, name, image, description, ingredients, directions) VALUES(?, ?, ?, ?, ?, ?)",
+      [userId, name, image, description, ingredients, directions],
     );
-
-    const recipeId = result.insertId;
-
-    // 재료(ingredients) 정보가 있다면 ingredients 테이블에 저장
-    if (ingredients) {
-      // 문자열로 들어온 경우 객체 배열로 변환
-      const parsedIngredients =
-        typeof ingredients === "string" ? JSON.parse(ingredients) : ingredients;
-
-      for (const ingredient of parsedIngredients) {
-        if (ingredient.name) {
-          await pool.query(
-            "INSERT INTO ingredients (recipe_id, name, amount) VALUES (?, ?, ?)",
-            [recipeId, ingredient.name, ingredient.amount],
-          );
-        }
-      }
-    }
-
-    // 만드는 방법(directions) 정보가 있다면 directions 테이블에 저장
-    if (directions) {
-      const parsedDirections =
-        typeof directions === "string" ? JSON.parse(directions) : directions;
-
-      for (let i = 0; i < parsedDirections.length; i++) {
-        const description = parsedDirections[i];
-        if (description) {
-          await pool.query(
-            "INSERT INTO directions (recipe_id, step_number, description) VALUES (?, ?, ?)",
-            [recipeId, i + 1, description],
-          );
-        }
-      }
-    }
-
-    res.status(201).json({ id: recipeId, name, image, description });
+    res.status(201).json({ name, image, description });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "서버 에러" });
@@ -70,9 +44,15 @@ router.get("/", async (req, res) => {
   try {
     // 클라이언트에서 보낸 쿼리스트링(?query=...) 값을 가져옵니다.
     const keyword = req.query.query;
+    const sort = req.query.sort || "latest_desc"; // 정렬 조건 파라미터 가져오기
 
-    let query =
-      "SELECT r.*, u.name AS author_name FROM recipes r LEFT JOIN users u ON r.user_id = u.id";
+    // 인기순 정렬을 위해 likes 테이블과 JOIN 하고 좋아요 개수(COUNT)를 구합니다.
+    let query = `
+      SELECT r.*, u.name AS author_name, COUNT(l.id) AS like_count
+      FROM recipes r 
+      LEFT JOIN users u ON r.user_id = u.id
+      LEFT JOIN likes l ON r.id = l.recipe_id
+    `;
     let params = [];
 
     // 검색어가 있을 경우 WHERE 조건문을 추가합니다.
@@ -80,7 +60,21 @@ router.get("/", async (req, res) => {
       query += " WHERE r.name LIKE ?";
       params.push(`%${keyword}%`);
     }
-    query += " ORDER BY r.id DESC";
+
+    query += " GROUP BY r.id"; // COUNT 함수를 쓰기 위해 그룹화
+
+    // 정렬 조건에 따른 ORDER BY 추가
+    if (sort === "latest_asc") {
+      query += " ORDER BY r.id ASC";
+    } else if (sort === "popular") {
+      query += " ORDER BY like_count DESC, r.id DESC";
+    } else if (sort === "name_asc") {
+      query += " ORDER BY r.name ASC";
+    } else if (sort === "name_desc") {
+      query += " ORDER BY r.name DESC";
+    } else {
+      query += " ORDER BY r.id DESC"; // 기본값: 최신순(내림차순)
+    }
 
     const [result] = await pool.query(query, params);
     res.status(200).json(result);
@@ -114,23 +108,7 @@ router.get("/:id", async (req, res) => {
       [id],
     );
     if (result.length > 0) {
-      const recipe = result[0];
-
-      // 해당 레시피의 재료 목록 조회 추가
-      const [ingredients] = await pool.query(
-        "SELECT id, name, amount FROM ingredients WHERE recipe_id = ?",
-        [id],
-      );
-      recipe.ingredients = ingredients;
-
-      // 해당 레시피의 만드는 방법 목록 조회 추가
-      const [directions] = await pool.query(
-        "SELECT step_number, description FROM directions WHERE recipe_id = ? ORDER BY step_number ASC",
-        [id],
-      );
-      recipe.directions = directions;
-
-      res.status(200).json(recipe); // 일치하는 첫 번째 레시피 정보 반환
+      res.status(200).json(result[0]); // 일치하는 첫 번째 레시피 정보 반환
     } else {
       res.status(404).json({ message: "레시피를 찾을 수 없습니다." });
     }
@@ -257,7 +235,7 @@ router.delete("/:id/comments/:commentId", async (req, res) => {
     }
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: "서버 에러", error: error.message });
+    res.status(500).json({ message: "서버 에러" });
   }
 });
 
