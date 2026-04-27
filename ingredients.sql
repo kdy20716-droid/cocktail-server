@@ -1,0 +1,7 @@
+CREATE TABLE ingredients (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  recipe_id INT NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  amount VARCHAR(255),
+  FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE CASCADE
+);

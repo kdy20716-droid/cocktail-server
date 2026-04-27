@@ -11,12 +11,50 @@ const router = express.Router(); // Router 객체 생성
 router.post("/", async (req, res) => {
   try {
     // 1. req.body에서 user_id도 함께 꺼내옵니다.
-    const { user_id, name, image, description } = req.body;
-    await pool.query(
+    const { user_id, name, image, description, ingredients, directions } =
+      req.body;
+
+    // 레시피 정보 저장
+    const [result] = await pool.query(
       "INSERT INTO recipes(user_id, name, image, description) VALUES(?, ?, ?, ?)",
       [user_id, name, image, description],
     );
-    res.status(201).json({ name, image, description });
+
+    const recipeId = result.insertId;
+
+    // 재료(ingredients) 정보가 있다면 ingredients 테이블에 저장
+    if (ingredients) {
+      // 문자열로 들어온 경우 객체 배열로 변환
+      const parsedIngredients =
+        typeof ingredients === "string" ? JSON.parse(ingredients) : ingredients;
+
+      for (const ingredient of parsedIngredients) {
+        if (ingredient.name) {
+          await pool.query(
+            "INSERT INTO ingredients (recipe_id, name, amount) VALUES (?, ?, ?)",
+            [recipeId, ingredient.name, ingredient.amount],
+          );
+        }
+      }
+    }
+
+    // 만드는 방법(directions) 정보가 있다면 directions 테이블에 저장
+    if (directions) {
+      const parsedDirections =
+        typeof directions === "string" ? JSON.parse(directions) : directions;
+
+      for (let i = 0; i < parsedDirections.length; i++) {
+        const description = parsedDirections[i];
+        if (description) {
+          await pool.query(
+            "INSERT INTO directions (recipe_id, step_number, description) VALUES (?, ?, ?)",
+            [recipeId, i + 1, description],
+          );
+        }
+      }
+    }
+
+    res.status(201).json({ id: recipeId, name, image, description });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "서버 에러" });
@@ -76,7 +114,23 @@ router.get("/:id", async (req, res) => {
       [id],
     );
     if (result.length > 0) {
-      res.status(200).json(result[0]); // 일치하는 첫 번째 레시피 정보 반환
+      const recipe = result[0];
+
+      // 해당 레시피의 재료 목록 조회 추가
+      const [ingredients] = await pool.query(
+        "SELECT id, name, amount FROM ingredients WHERE recipe_id = ?",
+        [id],
+      );
+      recipe.ingredients = ingredients;
+
+      // 해당 레시피의 만드는 방법 목록 조회 추가
+      const [directions] = await pool.query(
+        "SELECT step_number, description FROM directions WHERE recipe_id = ? ORDER BY step_number ASC",
+        [id],
+      );
+      recipe.directions = directions;
+
+      res.status(200).json(recipe); // 일치하는 첫 번째 레시피 정보 반환
     } else {
       res.status(404).json({ message: "레시피를 찾을 수 없습니다." });
     }
@@ -203,7 +257,7 @@ router.delete("/:id/comments/:commentId", async (req, res) => {
     }
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: "서버 에러" });
+    res.status(500).json({ message: "서버 에러", error: error.message });
   }
 });
 
