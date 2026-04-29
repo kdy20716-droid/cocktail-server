@@ -104,7 +104,7 @@ router.get("/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const [result] = await pool.query(
-      "SELECT r.*, u.name AS author_name, (SELECT COUNT(*) FROM likes WHERE recipe_id = r.id) AS like_count FROM recipes r LEFT JOIN users u ON r.user_id = u.id WHERE r.id = ?",
+      "SELECT r.*, u.name AS author_name, u.email AS author_email, (SELECT COUNT(*) FROM likes WHERE recipe_id = r.id) AS like_count FROM recipes r LEFT JOIN users u ON r.user_id = u.id WHERE r.id = ?",
       [id],
     );
     if (result.length > 0) {
@@ -112,6 +112,47 @@ router.get("/:id", async (req, res) => {
     } else {
       res.status(404).json({ message: "레시피를 찾을 수 없습니다." });
     }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "서버 에러" });
+  }
+});
+
+// 특정 레시피 수정 API : PUT /recipes/:id
+router.put("/:id", authMiddleware, upload.single("image"), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, description, ingredients, directions } = req.body;
+    const userId = req.userId; 
+
+    // 1. 기존 레시피 확인
+    const [recipes] = await pool.query("SELECT * FROM recipes WHERE id = ?", [id]);
+    if (recipes.length === 0) {
+      return res.status(404).json({ message: "레시피를 찾을 수 없습니다." });
+    }
+    const recipe = recipes[0];
+    
+    // 2. 권한 확인
+    const [users] = await pool.query("SELECT email FROM users WHERE id = ?", [userId]);
+    const requestUser = users[0];
+    
+    if (!requestUser || (requestUser.email !== "admin@cocktail.com" && recipe.user_id !== userId)) {
+      return res.status(403).json({ message: "수정 권한이 없습니다." });
+    }
+
+    // 3. 업데이트할 이미지 결정
+    let image = recipe.image; 
+    if (req.file) {
+      image = `http://localhost:4000/uploads/${req.file.filename}`;
+    }
+
+    // 4. 레시피 업데이트
+    await pool.query(
+      "UPDATE recipes SET name = ?, image = ?, description = ?, ingredients = ?, directions = ? WHERE id = ?",
+      [name, image, description, ingredients, directions, id]
+    );
+
+    res.status(200).json({ message: "레시피가 성공적으로 수정되었습니다.", id });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "서버 에러" });
