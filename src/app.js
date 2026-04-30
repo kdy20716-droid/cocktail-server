@@ -1,11 +1,17 @@
 // const express = require("express"); // 옛날 문법
 import express from "express"; // ES 문법 (자바스크립트 최신문법)
+import fs from "fs";
 
 // recipes 라우터 파일을 가져온다
 import recipesRouter from "./routes/recipes.js";
 import usersRouter from "./routes/users.js";
 
 const app = express();
+
+// uploads 폴더가 없으면 자동 생성
+if (!fs.existsSync("uploads")) {
+  fs.mkdirSync("uploads");
+}
 
 app.use((req, res, next) => {
   // CORS 허용
