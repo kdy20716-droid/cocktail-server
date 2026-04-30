@@ -3,6 +3,7 @@ import express from "express";
 import pool from "../db.js";
 import authMiddleware from "../middleware/auth.js";
 import fs from "fs";
+import path from "path";
 import upload from "../middleware/upload.js"; // 따로 분리해둔 upload.js 설정을 불러옵니다.
 
 const router = express.Router(); // Router 객체 생성
@@ -121,27 +122,36 @@ router.get("/:id", async (req, res) => {
 // 특정 레시피 수정 API : PUT /recipes/:id
 router.put("/:id", authMiddleware, upload.single("image"), async (req, res) => {
   try {
+    //id를 formdata에 넣어서 요청을 보낸다면 -> req.body
+    //id를 URL에 넣어서 요청을 보낸다면 -> req.params
     const { id } = req.params;
     const { name, description, ingredients, directions } = req.body;
-    const userId = req.userId; 
+    const userId = req.userId;
 
     // 1. 기존 레시피 확인
-    const [recipes] = await pool.query("SELECT * FROM recipes WHERE id = ?", [id]);
+    const [recipes] = await pool.query("SELECT * FROM recipes WHERE id = ?", [
+      id,
+    ]);
     if (recipes.length === 0) {
       return res.status(404).json({ message: "레시피를 찾을 수 없습니다." });
     }
     const recipe = recipes[0];
-    
+
     // 2. 권한 확인
-    const [users] = await pool.query("SELECT email FROM users WHERE id = ?", [userId]);
+    const [users] = await pool.query("SELECT email FROM users WHERE id = ?", [
+      userId,
+    ]);
     const requestUser = users[0];
-    
-    if (!requestUser || (requestUser.email !== "admin@cocktail.com" && recipe.user_id !== userId)) {
+
+    if (
+      !requestUser ||
+      (requestUser.email !== "admin@cocktail.com" && recipe.user_id !== userId)
+    ) {
       return res.status(403).json({ message: "수정 권한이 없습니다." });
     }
 
     // 3. 업데이트할 이미지 결정
-    let image = recipe.image; 
+    let image = recipe.image;
     if (req.file) {
       image = `http://localhost:4000/uploads/${req.file.filename}`;
     }
@@ -149,10 +159,12 @@ router.put("/:id", authMiddleware, upload.single("image"), async (req, res) => {
     // 4. 레시피 업데이트
     await pool.query(
       "UPDATE recipes SET name = ?, image = ?, description = ?, ingredients = ?, directions = ? WHERE id = ?",
-      [name, image, description, ingredients, directions, id]
+      [name, image, description, ingredients, directions, id],
     );
 
-    res.status(200).json({ message: "레시피가 성공적으로 수정되었습니다.", id });
+    res
+      .status(200)
+      .json({ message: "레시피가 성공적으로 수정되었습니다.", id });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "서버 에러" });
@@ -186,6 +198,15 @@ router.delete("/:id", async (req, res) => {
     }
 
     // 3. 권한이 확인되면 레시피 삭제
+    // 이미지 파일 삭제 로직 추가
+    if (recipe && recipe.image) {
+      const filename = recipe.image.split("/").pop();
+      const filePath = path.join("uploads", filename);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    }
+
     await pool.query("DELETE FROM recipes WHERE id = ?", [id]);
     res.status(200).json({ message: "레시피가 성공적으로 삭제되었습니다." });
   } catch (error) {
